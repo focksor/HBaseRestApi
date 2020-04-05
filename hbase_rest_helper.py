@@ -2,6 +2,7 @@
 # -*- encoding: utf-8 -*-
 
 from base64 import b64encode
+from base64 import b64decode
 import requests
 
 '''
@@ -18,6 +19,20 @@ class HBaseRest:
     def __init__(self, host="localhost", port=8080):
         self.baseUrl = "http://" + host + ":" + str(port)
 
+    def str2b64(self, source_str):
+        return b64encode(bytes(source_str, encoding="utf8")).decode()
+
+    def b642str(self, base64_bytes):
+        return b64decode(base64_bytes).decode()
+
+    def decode_data(self, src):
+        row = src['Row']
+        for r in row:
+            r["key"] = self.b642str(r["key"])
+            cell = r["Cell"]
+            for c in cell:
+                c["column"] = self.b642str(c["column"])
+                c["$"] = self.b642str(c["$"])
 
     # get cluster version
     # return json like this: {'Version': '2.2.4'}
@@ -30,13 +45,20 @@ class HBaseRest:
         response = requests.get(self.baseUrl+'/status/cluster', headers={"Accept" : "application/json"})
         return response.json()
 
-
     # get table list
     # return json like this: {'table': [{'name': 'test1'}, {'name': 'test2'}]}
     def get_table_list(self):
         response = requests.get(self.baseUrl+'/', headers={"Accept" : "application/json"})
         return response.json()
 
+    # get table schema
+    # return table schema json if successful
+    # else, return status code
+    def get_table_schema(self, table_name):
+        response = requests.get(self.baseUrl+'/'+table_name+"/schema", headers={"Accept" : "application/json"})
+        if response.status_code == 200:
+            return response.json()
+        return response.status_code
 
     # create a table if not exists, return status code 201 if successful.
     # add column_family to table if exists, return status code 200 if successful.
@@ -46,10 +68,7 @@ class HBaseRest:
         for column in column_family_name:
             column_xml += '<ColumnSchema name="%s" />' % column
         table_xml = '<?xml version="1.0" encoding="UTF-8"?><TableSchema name="%s">%s</TableSchema>' % (table_name, column_xml)
-        response = requests.post(self.baseUrl+'/%s/schema'%table_name, 
-                                data=table_xml,
-                                headers = {'content-type': 'text/xml'})
-        
+        response = requests.post(self.baseUrl+'/%s/schema'%table_name, data=table_xml, headers = {'content-type': 'text/xml'})
         return response.status_code
 
 
@@ -59,7 +78,6 @@ class HBaseRest:
     # eg: drop_table("test")
     def drop_table(self, table_name):
         response = requests.delete(self.baseUrl+'/%s/schema' % table_name)
-        
         return response.status_code
 
     # insert data to table
@@ -68,16 +86,47 @@ class HBaseRest:
     # return status code 200 if successful
     # return status code 404 if table of column_family not found
     def put(self, table_name, column_family, column, row_key, data):
-        column_b64 = b64encode(bytes(column_family+":"+column, encoding="utf8")).decode()
-        row_key_b64 = b64encode(bytes(row_key, encoding="utf8")).decode()
-        data_b64 = b64encode(bytes(data, encoding="utf8")).decode()
-
+        column_b64 = self.str2b64(column_family+":"+column)
+        row_key_b64 = self.str2b64(row_key)
+        data_b64 = self.str2b64(data)
         data_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><CellSet><Row key="%s"><Cell column="%s">%s</Cell></Row></CellSet>' % (row_key_b64, column_b64, data_b64)
         response = requests.put(self.baseUrl+'/%s/fakeRow' % table_name, data=data_xml, headers = {'content-type': 'text/xml'})
-        print(response.status_code)
+
+    # get data row from table
+    # return status code 404 if not found
+    # return json, values are encoded with base64 if base64decode is False.
+    def get(self, table_name, row, column_family = None, column = None, base64decode=True):
+        url = self.baseUrl+'/%s/%s' % (table_name, row)
+        if column_family and column:
+            url += "/%s:%s" % (column_family, column)
+
+        response = requests.get(url, headers={"Accept" : "application/json"})
+        if response.status_code == 200:
+            res_json = response.json()
+            if base64decode:
+                self.decode_data(res_json)
+            return res_json
+        return response.status_code
+
+    # scan data from table
+    # return json if successful, values are encoded with base64 if base64decode is False.
+    # else, return status code
+    def scan(self, table_name, limit=100000, base64decode=True):
+        scanner_xml = '<Scanner batch="%s"/>' % limit
+        response = requests.put(self.baseUrl+'/%s/scanner' % table_name, data=scanner_xml, headers = {'content-type': 'text/xml'})
+        if response.status_code == 201:
+            location = response.headers['location']
+            response = requests.get(location, headers={"Accept" : "application/json"})
+            requests.delete(location, headers={"Accept" : "application/json"})
+            res_json = response.json()
+            if base64decode:
+                self.decode_data(res_json)
+            return res_json
+        return response.status_code
 
 
 
 if __name__ == "__main__":
     hbase = HBaseRest()
-    hbase.put("users", "cf", "es", "row5", "1234567")
+    # print(hbase.b642str("cm93NQ=="))
+    print(hbase.scan("users"))
