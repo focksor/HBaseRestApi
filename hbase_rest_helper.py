@@ -128,5 +128,22 @@ class HBaseRest:
 
 if __name__ == "__main__":
     hbase = HBaseRest()
-    # print(hbase.b642str("cm93NQ=="))
-    print(hbase.scan("users"))
+    print("cluster version:", hbase.get_cluster_version())
+    print("cluster status:", hbase.get_cluster_status())
+    print("get table list:", hbase.get_table_list())
+    hbase.create_table("user", "userinfo")
+    print("table list after adding:", hbase.get_table_list())
+    print("table schema of user:", hbase.get_table_schema("user"))
+
+    print("put data to user...")
+    hbase.put("user", "userinfo", "phone", "0000001", "13800138000")
+    hbase.put("user", "userinfo", "address", "0000001", "none")
+    hbase.put("user", "userinfo", "phone", "0000002", "10086")
+
+    print("get data from user:", hbase.get("user", "0000001"))
+    print("get data from user:", hbase.get("user", "0000001", "userinfo", "phone"))
+    print("get all data from user:", hbase.scan("user"))
+    
+    print("drop table user:", hbase.drop_table("user"))
+    print("table list after droping:", hbase.get_table_list())
+
