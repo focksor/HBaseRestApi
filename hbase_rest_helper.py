@@ -108,16 +108,28 @@ class HBaseRest:
             return res_json
         return response.status_code
 
-    # scan data from table
-    # return json if successful, values are encoded with base64 if base64decode is False.
+
+    # create a scanner for scaning
+    # return scanner location if successful
     # else, return status code
-    def scan(self, table_name, limit=100000, base64decode=True):
-        scanner_xml = '<Scanner batch="%s"/>' % limit
+    def create_scanner(self, table_name, batch):
+        scanner_xml = '<Scanner batch="%s"/>' % batch
         response = requests.put(self.baseUrl+'/%s/scanner' % table_name, data=scanner_xml, headers = {'content-type': 'text/xml'})
         if response.status_code == 201:
             location = response.headers['location']
-            response = requests.get(location, headers={"Accept" : "application/json"})
-            requests.delete(location, headers={"Accept" : "application/json"})
+            return location
+        return response.status_code
+
+    # delete a scanner with location
+    def delete_scanner(self, location):
+        requests.delete(location, headers={"Accept" : "application/json"})
+
+    # scan data from table
+    # return json if successful, values are encoded with base64 if base64decode is False.
+    # else, return status code, code 204 means no more data.
+    def scan(self, location, base64decode=True):
+        response = requests.get(location, headers={"Accept" : "application/json"})
+        if response.status_code == 200:
             res_json = response.json()
             if base64decode:
                 self.decode_data(res_json)
@@ -127,7 +139,7 @@ class HBaseRest:
 
 
 if __name__ == "__main__":
-    hbase = HBaseRest()
+    hbase = HBaseRest("192.168.232.156")
     print("cluster version:", hbase.get_cluster_version())
     print("cluster status:", hbase.get_cluster_status())
     print("get table list:", hbase.get_table_list())
@@ -142,7 +154,17 @@ if __name__ == "__main__":
 
     print("get data from user:", hbase.get("user", "0000001"))
     print("get data from user:", hbase.get("user", "0000001", "userinfo", "phone"))
-    print("get all data from user:", hbase.scan("user"))
+    
+    print("get all data from user:")
+    location = hbase.create_scanner("user", 2)
+    cntr = 1
+    while True:
+        res = hbase.scan(location)
+        print("scanner counter:", cntr, res)
+        cntr += 1
+        if type(res) == int:
+            break
+    hbase.delete_scanner(location)
     
     print("drop table user:", hbase.drop_table("user"))
     print("table list after droping:", hbase.get_table_list())
