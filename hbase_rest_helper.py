@@ -11,7 +11,8 @@ import requests
 @Author  :   focksor
 @Version :   1.0
 @Contact :   focksor@outlook.com
-@Desc    :   functions for hbase rest api.you should first run [hbase rest start] or [hbase-daemon.sh start rest] to enable hbase rest api.
+@Desc    :   functions for hbase rest api.
+YOU SHOULD FIRST RUN [hbase rest start] OR [hbase-daemon.sh start rest] TO ENABLE HBASE REST API.
 '''
 
 
